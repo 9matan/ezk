@@ -597,9 +597,8 @@ impl TransportsBuilder {
 
     pub(crate) fn build(&mut self) -> Transports {
         let dns_resolver = self.dns_resolver.take().unwrap_or_else(|| {
-            hickory_resolver::TokioResolver::builder_tokio()
+            hickory_resolver::TokioResolver::tokio_from_system_conf()
                 .expect("Failed to create default system DNS resolver")
-                .build()
         });
 
         Transports {
