@@ -146,7 +146,7 @@ mod tests {
             .await
             .unwrap();
 
-        let mut sdp_session = rtc_proto::AsyncSdpSession::new(
+        let mut sdp_session = rtc::AsyncSdpSession::new(
             "10.6.0.3".parse().unwrap(),
             Options {
                 offer_transport: TransportType::Rtp,
