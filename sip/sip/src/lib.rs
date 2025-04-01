@@ -18,7 +18,7 @@ mod media;
 mod outbound_call;
 mod registration;
 
-pub use call::Call;
+pub use call::{Call, CallEvent};
 pub use client_builder::ClientBuilder;
 pub use incoming_call::{IncomingCall, IncomingCallFromInviteError};
 pub use media::{
