@@ -190,6 +190,16 @@ impl Print for HostPort {
     }
 }
 
+impl ToString for HostPort {
+    fn to_string(&self) -> String {
+        let mut s = self.host.to_string();
+        if let Some(port) = self.port {
+            s.push_str(format!(":{}", port).as_str());
+        }
+        s
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
