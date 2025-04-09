@@ -138,6 +138,10 @@ impl Registration {
         *self.is_registered.borrow_and_update()
     }
 
+    pub fn contact(&self) -> Contact {
+        self.inner.contact.clone()
+    }
+
     pub async fn wait_for_registration_failure(&mut self) {
         let _ = self
             .is_registered

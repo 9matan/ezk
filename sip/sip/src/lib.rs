@@ -1,15 +1,19 @@
 #![warn(unreachable_pub)]
 
+
 use async_trait::async_trait;
 use bytesstr::BytesStr;
+use incoming_call::NoMedia;
 use log::warn;
+use tokio::sync::Mutex;
 use sip_auth::{ClientAuthenticator, DigestAuthenticator, DigestCredentials, DigestError};
 use sip_core::{Endpoint, IncomingRequest, Layer, MayTake};
 use sip_types::{
-    header::typed::{Contact, ContentType},
+    header::typed::{Contact, ContentType, FromTo},
     uri::{sip::SipUri, NameAddr},
     Method, StatusCode,
 };
+use std::{sync::Arc, collections::VecDeque};
 
 mod call;
 mod client_builder;
@@ -33,8 +37,15 @@ slotmap::new_key_type! {
     struct AccountId;
 }
 
-#[derive(Default)]
-struct ClientLayer {}
+struct ClientLayer {
+    invites_queue: Arc<Mutex<VecDeque<IncomingRequest>>>,
+}
+
+impl ClientLayer {
+    pub(crate) fn new(invites_queue: Arc<Mutex<VecDeque<IncomingRequest>>>) -> Self {
+        Self { invites_queue }
+    }
+}
 
 #[async_trait]
 impl Layer for ClientLayer {
@@ -42,34 +53,15 @@ impl Layer for ClientLayer {
         "client"
     }
 
-    async fn receive(&self, endpoint: &Endpoint, request: MayTake<'_, IncomingRequest>) {
+    async fn receive(&self, _endpoint: &Endpoint, request: MayTake<'_, IncomingRequest>) {
         let invite = if request.line.method == Method::INVITE {
             request.take()
         } else {
             return;
         };
 
-        let contact: SipUri = "sip:bob@example.com".parse().unwrap();
-        let contact = Contact::new(NameAddr::uri(contact));
-
-        let call = match IncomingCall::from_invite(endpoint.clone(), invite, contact) {
-            Ok(call) => call,
-            Err((mut invite, e)) => {
-                log::warn!("Failed to create incoming call from INVITE, {e}");
-
-                let response = endpoint.create_response(&invite, StatusCode::BAD_REQUEST, None);
-
-                if let Err(e) = endpoint
-                    .create_server_inv_tsx(&mut invite)
-                    .respond_failure(response)
-                    .await
-                {
-                    log::warn!("Failed to respond with BAD_REQUEST to incoming INVITE, {e}");
-                }
-
-                return;
-            }
-        };
+        let mut queue = self.invites_queue.lock().await;
+        queue.push_back(invite);
     }
 }
 
@@ -79,6 +71,7 @@ impl Layer for ClientLayer {
 #[derive(Clone)]
 pub struct Client {
     endpoint: Endpoint,
+    invites_queue: Arc<Mutex<VecDeque<IncomingRequest>>>,
 }
 
 impl Client {
@@ -111,6 +104,18 @@ impl Client {
             media,
         )
         .await
+    }
+
+    pub async fn get_incoming_call(&self, contact: Contact) -> Result<Option<(IncomingCall<NoMedia>, FromTo)>, (IncomingRequest, IncomingCallFromInviteError)> {
+        let invite = self.invites_queue.lock().await.pop_front();
+        match invite {
+            Some(invite) => {
+                let from = invite.base_headers.from.clone();
+                IncomingCall::from_invite(self.endpoint.clone(), invite, contact)
+                    .map(|incoming_call| Some((incoming_call, from)))
+            },
+            None => Ok(None)
+        }
     }
 }
 

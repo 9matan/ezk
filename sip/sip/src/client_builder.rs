@@ -1,11 +1,12 @@
 use crate::{Client, ClientLayer};
+use tokio::sync::Mutex;
 use sip_core::transport::{
     streaming::StreamingListenerBuilder,
     tcp::{TcpConnector, TcpListener},
     udp::Udp,
 };
 use sip_ua::{dialog::DialogLayer, invite::InviteLayer};
-use std::{io, mem::take, net::SocketAddr, sync::Arc};
+use std::{collections::VecDeque, io, mem::take, net::SocketAddr, sync::Arc};
 
 pub struct ClientBuilder {
     endpoint: sip_core::EndpointBuilder,
@@ -105,12 +106,14 @@ impl ClientBuilder {
             }
         }
 
+        let invites_queue = Arc::new(Mutex::new(VecDeque::new()));
         this.endpoint.add_layer(DialogLayer::default());
         this.endpoint.add_layer(InviteLayer::default());
-        this.endpoint.add_layer(ClientLayer::default());
+        this.endpoint.add_layer(ClientLayer::new(Arc::clone(&invites_queue)));
 
         Ok(Client {
             endpoint: this.endpoint.build(),
+            invites_queue,
         })
     }
 }
